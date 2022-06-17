@@ -9,7 +9,34 @@ use std::process::Command;
 fn main() {
     let target = env::var("TARGET").unwrap();
     let out_dir = env::var("OUT_DIR").unwrap();
+    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     let lgbm_root = Path::new(&out_dir).join("lightgbm");
+
+    let build_enabled = env::var("BUILD_ENABLED")
+        .map(|v| v == "1")
+        .unwrap_or(true); // run by default
+    if !build_enabled {
+        println!("build script skipped");
+
+        // link to appropriate C++ lib
+        if target.contains("apple") {
+            println!("cargo:rustc-link-lib=c++");
+            println!("cargo:rustc-link-lib=dylib=omp");
+        } else if target.contains("linux") {
+            println!("cargo:rustc-link-lib=stdc++");
+            println!("cargo:rustc-link-lib=dylib=gomp");
+        }
+
+        println!("cargo:rustc-link-search={}", out_path.join("lib").display());
+        println!("cargo:rustc-link-search=native={}", out_path.display());
+        if target.contains("windows") {
+            println!("cargo:rustc-link-lib=static=lib_lightgbm");
+        } else {
+            println!("cargo:rustc-link-lib=static=_lightgbm");
+        }
+
+        return
+    }
 
     // copy source code
     if !lgbm_root.exists() {
@@ -49,7 +76,6 @@ fn main() {
         .clang_arg(format!("-I{}", lgbm_root.join("include").display()))
         .generate()
         .expect("Unable to generate bindings");
-    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     bindings
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings.");
